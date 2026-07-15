@@ -1,6 +1,5 @@
 "use client";
 
-import { Calculator } from "lucide-react";
 import { useMemo, useState } from "react";
 import DataTableWrapper from "@/components/data-table-wrapper";
 import PageHeader from "@/components/page-header";
@@ -13,89 +12,63 @@ const inputClass =
   "h-10 w-full rounded-md border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
 export default function SupplierSelectionPage() {
-  const { rawMaterials, suppliers, supplierOffers, pushToast } = useScm();
-  const [rawMaterialId, setRawMaterialId] = useState(rawMaterials[0]?.id || "");
-  const [requiredQuantity, setRequiredQuantity] = useState(120);
-  const [criteria, setCriteria] = useState(defaultWeightedProductCriteria);
-  const [result, setResult] = useState(null);
+  const { rawMaterials, suppliers, supplierOffers, procurementRows } = useScm();
+  const firstRequiredMaterial = procurementRows.find((row) => Number(row.netRequirement || 0) > 0)?.rawMaterialId;
+  const [rawMaterialId, setRawMaterialId] = useState(firstRequiredMaterial || rawMaterials[0]?.id || "");
   const rawMaterial = rawMaterials.find((item) => item.id === rawMaterialId);
+  const procurementRow = procurementRows.find((row) => row.rawMaterialId === rawMaterialId);
+  const requiredQuantity = Number(procurementRow?.netRequirement || 0);
   const offers = useMemo(
     () => supplierOffers.filter((offer) => offer.rawMaterialId === rawMaterialId),
     [rawMaterialId, supplierOffers]
   );
-  const currentResult =
-    result ||
-    calculateWeightedProduct({
-      offers,
-      suppliers,
-      requiredQuantity,
-      criteria,
-    });
-
-  function updateWeight(key, value) {
-    setCriteria((current) =>
-      current.map((criterion) =>
-        criterion.key === key ? { ...criterion, weight: Number(value || 0) } : criterion
-      )
-    );
-    setResult(null);
-  }
-
-  function runSelection() {
-    const calculation = calculateWeightedProduct({
-      offers,
-      suppliers,
-      requiredQuantity,
-      criteria,
-    });
-    setResult(calculation);
-    pushToast(calculation.isValid ? "Pemilihan supplier berhasil dihitung." : calculation.error, calculation.isValid ? "success" : "error");
-  }
+  const currentResult = calculateWeightedProduct({
+    offers,
+    suppliers,
+    requiredQuantity,
+    criteria: defaultWeightedProductCriteria,
+  });
 
   return (
     <div>
       <PageHeader
         title="Pemilihan Supplier"
-        description="Weighted Product bukan machine learning. Metode ini adalah multi-criteria decision-making; supplier dipilih berdasarkan kebutuhan pembelian saat ini tanpa forced rotation."
-        actions={
-          <button type="button" onClick={runSelection} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            <Calculator className="h-4 w-4" aria-hidden="true" />
-            Hitung Ranking WP
-          </button>
-        }
+        description="Weighted Product menghitung ranking supplier otomatis dari kebutuhan pembelian saat ini. Metode ini bukan machine learning dan tidak memakai rotasi supplier."
       />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <section className="space-y-6">
           <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-medium text-gray-700">
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="text-sm font-medium text-gray-700 md:col-span-2">
                 Bahan Baku
-                <select value={rawMaterialId} onChange={(event) => { setRawMaterialId(event.target.value); setResult(null); }} className={inputClass}>
+                <select value={rawMaterialId} onChange={(event) => setRawMaterialId(event.target.value)} className={inputClass}>
                   {rawMaterials.map((material) => (
                     <option key={material.id} value={material.id}>{material.name}</option>
                   ))}
                 </select>
               </label>
-              <label className="text-sm font-medium text-gray-700">
-                Kebutuhan Pembelian ({rawMaterial?.inventoryUnit})
-                <input type="number" value={requiredQuantity} onChange={(event) => { setRequiredQuantity(event.target.value); setResult(null); }} className={inputClass} />
-              </label>
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Kebutuhan Pembelian</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">
+                  {formatNumber(requiredQuantity, { maximumFractionDigits: 2 })} {rawMaterial?.inventoryUnit}
+                </p>
+              </div>
             </div>
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">Konfigurasi Bobot Kriteria</h2>
-              <StatusBadge status={`Total ${formatNumber(currentResult.totalWeight || 0, { maximumFractionDigits: 2 })}`} />
+              <h2 className="text-base font-semibold text-gray-900">Bobot Kriteria Standar</h2>
+              <StatusBadge status="Otomatis" />
             </div>
             <div className="grid gap-3 md:grid-cols-5">
-              {criteria.map((criterion) => (
-                <label key={criterion.key} className="text-sm font-medium text-gray-700">
-                  {criterion.label}
-                  <input type="number" min="0" max="1" step="0.01" value={criterion.weight} onChange={(event) => updateWeight(criterion.key, event.target.value)} className={inputClass} />
-                  <span className="mt-1 block text-xs text-gray-500">{criterion.type === "cost" ? "Cost" : "Benefit"}</span>
-                </label>
+              {defaultWeightedProductCriteria.map((criterion) => (
+                <div key={criterion.key} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-sm font-semibold text-gray-900">{criterion.label}</p>
+                  <p className="mt-1 text-sm text-gray-600">{formatNumber(criterion.weight, { maximumFractionDigits: 2 })}</p>
+                  <p className="mt-1 text-xs text-gray-500">{criterion.type === "cost" ? "Cost" : "Benefit"}</p>
+                </div>
               ))}
             </div>
           </div>
@@ -109,11 +82,11 @@ export default function SupplierSelectionPage() {
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">Kualitas</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">Kapasitas</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">Jarak</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Min. Order</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Minimal Order</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">Lead Time</th>
-                  <th className="px-4 py-3 text-center font-semibold text-gray-700">Eligibility</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">S</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">V</th>
+                  <th className="px-4 py-3 text-center font-semibold text-gray-700">Kelayakan</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Nilai S</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Nilai V</th>
                   <th className="px-4 py-3 text-center font-semibold text-gray-700">Rank</th>
                 </tr>
               </thead>
@@ -152,8 +125,8 @@ export default function SupplierSelectionPage() {
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div><dt className="text-gray-500">Nilai S</dt><dd className="font-semibold text-gray-900">{formatNumber(currentResult.selected.vectorS, { maximumFractionDigits: 6 })}</dd></div>
                 <div><dt className="text-gray-500">Nilai V</dt><dd className="font-semibold text-gray-900">{formatNumber(currentResult.selected.vectorV, { maximumFractionDigits: 6 })}</dd></div>
-                <div><dt className="text-gray-500">Net Requirement</dt><dd className="font-semibold text-gray-900">{formatNumber(requiredQuantity)} {rawMaterial?.inventoryUnit}</dd></div>
-                <div><dt className="text-gray-500">Final Order</dt><dd className="font-semibold text-gray-900">{formatNumber(currentResult.selected.finalOrderQuantity)} {currentResult.selected.unit}</dd></div>
+                <div><dt className="text-gray-500">Kebutuhan Bersih</dt><dd className="font-semibold text-gray-900">{formatNumber(requiredQuantity, { maximumFractionDigits: 2 })} {rawMaterial?.inventoryUnit}</dd></div>
+                <div><dt className="text-gray-500">Jumlah Beli</dt><dd className="font-semibold text-gray-900">{formatNumber(currentResult.selected.finalOrderQuantity, { maximumFractionDigits: 2 })} {currentResult.selected.unit}</dd></div>
               </dl>
               <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-6 text-gray-700">{currentResult.reason}</p>
             </div>
@@ -161,8 +134,7 @@ export default function SupplierSelectionPage() {
             <p className="mt-3 text-sm text-gray-500">{currentResult.error || currentResult.reason}</p>
           )}
           <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-600">
-            Minimum order tidak digunakan sebagai kriteria rotasi. Minimum order hanya menentukan final order quantity:
-            maksimum dari net requirement dan minimum order supplier.
+            Minimal order hanya dipakai untuk menentukan jumlah pembelian akhir, bukan untuk rotasi supplier.
           </div>
         </aside>
       </div>

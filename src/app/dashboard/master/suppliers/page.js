@@ -212,7 +212,7 @@ export default function SuppliersPage() {
                       <div>
                         <p className="text-sm font-semibold text-gray-900">{material?.name || "-"}</p>
                         <p className="text-xs text-gray-500">
-                          {formatCurrency(offer.price)} / {offer.unit} · Lead time {offer.leadTime} hari
+                          {formatCurrency(offer.price)} / {offer.unit} - Lead time {offer.leadTime} hari
                         </p>
                       </div>
                       <div className="flex gap-1">

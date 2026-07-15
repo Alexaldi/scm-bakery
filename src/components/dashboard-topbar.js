@@ -1,13 +1,13 @@
 "use client";
 
-import { Bell, Menu, RotateCcw, UserCircle } from "lucide-react";
+import { Bell, LogOut, Menu, UserCircle } from "lucide-react";
 import { useState } from "react";
+import { logoutAction } from "@/app/login/actions";
 import { useScm } from "@/context/scm-context";
 import { formatDate } from "@/lib/utils/format";
-import { roles } from "@/lib/utils/navigation";
 
 export default function DashboardTopbar({ onToggleSidebar }) {
-  const { role, setRole, notifications, markNotificationsRead, resetDemoData } = useScm();
+  const { role, session, notifications, markNotificationsRead } = useScm();
   const [openNotifications, setOpenNotifications] = useState(false);
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
@@ -30,30 +30,6 @@ export default function DashboardTopbar({ onToggleSidebar }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="hidden items-center gap-2 text-sm text-gray-600 sm:flex">
-            <span>Role</span>
-            <select
-              value={role}
-              onChange={(event) => setRole(event.target.value)}
-              className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              {roles.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            onClick={resetDemoData}
-            className="hidden items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 xl:flex"
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            Reset
-          </button>
-
           <div className="relative">
             <button
               type="button"
@@ -93,25 +69,20 @@ export default function DashboardTopbar({ onToggleSidebar }) {
           <div className="hidden items-center gap-2 rounded-md border border-gray-200 px-3 py-2 md:flex">
             <UserCircle className="h-5 w-5 text-gray-500" aria-hidden="true" />
             <div className="leading-tight">
-              <p className="text-xs font-semibold text-gray-900">Demo User</p>
+              <p className="text-xs font-semibold text-gray-900">{session?.name || "Pengguna"}</p>
               <p className="text-[11px] text-gray-500">{role}</p>
             </div>
           </div>
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Keluar</span>
+            </button>
+          </form>
         </div>
-      </div>
-
-      <div className="border-t border-gray-100 px-4 py-2 sm:hidden">
-        <select
-          value={role}
-          onChange={(event) => setRole(event.target.value)}
-          className="h-9 w-full rounded-md border border-gray-300 bg-white px-2 text-sm font-medium text-gray-900"
-        >
-          {roles.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
       </div>
     </header>
   );

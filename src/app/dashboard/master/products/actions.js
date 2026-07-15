@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireRole } from "@/lib/auth/session";
 import prisma from "@/lib/db/prisma";
 import { normalizeProductInput, PRODUCT_STATUSES, serializeProduct } from "./product-validation";
 
@@ -19,7 +20,17 @@ function errorResult(error) {
   return { ok: false, message: "Produk gagal disimpan. Coba lagi beberapa saat." };
 }
 
+async function authorizeProductWrite() {
+  await requireRole(["Administrator", "PPIC", "Produksi"]);
+}
+
 export async function createProduct(input) {
+  try {
+    await authorizeProductWrite();
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+
   const validation = normalizeProductInput(input);
 
   if (!validation.ok) {
@@ -43,6 +54,12 @@ export async function createProduct(input) {
 }
 
 export async function updateProduct(id, input) {
+  try {
+    await authorizeProductWrite();
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+
   if (!id) {
     return { ok: false, message: "Produk tidak ditemukan." };
   }
@@ -71,6 +88,12 @@ export async function updateProduct(id, input) {
 }
 
 export async function changeProductStatus(id, status) {
+  try {
+    await authorizeProductWrite();
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+
   if (!id) {
     return { ok: false, message: "Produk tidak ditemukan." };
   }

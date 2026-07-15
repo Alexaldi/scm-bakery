@@ -1,9 +1,5 @@
 generator client {
-  provider            = "prisma-client"
-  output              = "./generated/client"
-  runtime             = "nodejs"
-  moduleFormat        = "esm"
-  importFileExtension = "ts"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -17,35 +13,67 @@ enum RecordStatus {
   INACTIVE
 }
 
+enum UserRole {
+  Administrator
+  PPIC
+  Purchasing
+  Gudang
+  Produksi
+  Distribusi
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  role         UserRole
+  status       RecordStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([role])
+  @@index([status])
+}
+
 model Product {
-  id            String                    @id @default(cuid())
-  code          String                    @unique
-  name          String
-  category      String
-  sellingPrice  Decimal                   @db.Decimal(12, 2)
-  unit          String
-  shelfLifeDays Int
-  status        RecordStatus              @default(ACTIVE)
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
-  bomItems      BillOfMaterial[]
-  sales         Sale[]
-  inventory     FinishedProductInventory?
+  id                 String                    @id @default(cuid())
+  code               String                    @unique
+  name               String
+  category           String
+  sellingPrice       Decimal                   @db.Decimal(12, 2)
+  unit               String
+  shelfLifeDays      Int
+  status             RecordStatus              @default(ACTIVE)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  bomItems           BillOfMaterial[]
+  sales              Sale[]
+  inventory          FinishedProductInventory?
+  forecasts          Forecast[]
+  productionOrders   ProductionOrder[]
+  distributions      Distribution[]
+  inventoryMovements InventoryMovement[]
 }
 
 model RawMaterial {
-  id                String                @id @default(cuid())
-  code              String                @unique
-  name              String
-  category          String
-  inventoryUnit     String
-  warehouseLocation String
-  status            RecordStatus          @default(ACTIVE)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  bomItems          BillOfMaterial[]
-  supplierMaterials SupplierMaterial[]
-  inventory         RawMaterialInventory?
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  name                 String
+  category             String
+  inventoryUnit        String
+  warehouseLocation    String
+  status               RecordStatus          @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  bomItems             BillOfMaterial[]
+  supplierMaterials    SupplierMaterial[]
+  inventory            RawMaterialInventory?
+  materialRequirements MaterialRequirement[]
+  procurementPlans     ProcurementPlan[]
+  inventoryMovements   InventoryMovement[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  receivingRecords     ReceivingRecord[]
 }
 
 model BillOfMaterial {
@@ -79,23 +107,26 @@ model Supplier {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   supplierMaterials SupplierMaterial[]
+  procurementPlans  ProcurementPlan[]
+  purchaseOrders    PurchaseOrder[]
 }
 
 model SupplierMaterial {
-  id            String       @id @default(cuid())
-  supplierId    String
-  rawMaterialId String
-  price         Decimal      @db.Decimal(12, 2)
-  qualityScore  Int
-  capacity      Decimal      @db.Decimal(12, 2)
-  minimumOrder  Decimal      @db.Decimal(12, 2)
-  leadTimeDays  Int
-  unit          String
-  status        RecordStatus @default(ACTIVE)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  supplier      Supplier     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  rawMaterial   RawMaterial  @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict)
+  id               String            @id @default(cuid())
+  supplierId       String
+  rawMaterialId    String
+  price            Decimal           @db.Decimal(12, 2)
+  qualityScore     Int
+  capacity         Decimal           @db.Decimal(12, 2)
+  minimumOrder     Decimal           @db.Decimal(12, 2)
+  leadTimeDays     Int
+  unit             String
+  status           RecordStatus      @default(ACTIVE)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  supplier         Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  rawMaterial      RawMaterial       @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict)
+  procurementPlans ProcurementPlan[]
 
   @@unique([supplierId, rawMaterialId])
   @@index([supplierId])
@@ -103,17 +134,18 @@ model SupplierMaterial {
 }
 
 model Customer {
-  id            String       @id @default(cuid())
-  code          String       @unique
+  id            String         @id @default(cuid())
+  code          String         @unique
   name          String
   customerType  String
   contactPerson String
   phone         String
   address       String
   region        String
-  status        RecordStatus @default(ACTIVE)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  status        RecordStatus   @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  distributions Distribution[]
 }
 
 model Sale {
@@ -151,4 +183,207 @@ model FinishedProductInventory {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   product       Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+}
+
+model Forecast {
+  id                   String                @id @default(cuid())
+  productId            String
+  period               DateTime
+  historicalPeriods    Int
+  quantity             Int
+  predictedQuantity    Int
+  method               String
+  status               String
+  calculation          Json?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  product              Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  materialRequirements MaterialRequirement[]
+  productionOrders     ProductionOrder[]
+
+  @@unique([productId, period])
+  @@index([productId])
+  @@index([period])
+}
+
+model MaterialRequirement {
+  id                    String            @id @default(cuid())
+  period                DateTime
+  rawMaterialId         String
+  forecastId            String?
+  totalGrossRequirement Decimal           @db.Decimal(12, 4)
+  inventoryUnit         String
+  products              Json?
+  status                String
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  rawMaterial           RawMaterial       @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict)
+  forecast              Forecast?         @relation(fields: [forecastId], references: [id], onDelete: SetNull)
+  procurementPlans      ProcurementPlan[]
+
+  @@unique([period, rawMaterialId])
+  @@index([rawMaterialId])
+  @@index([period])
+}
+
+model InventoryMovement {
+  id            String       @id @default(cuid())
+  movementDate  DateTime
+  itemType      String
+  rawMaterialId String?
+  productId     String?
+  type          String
+  quantity      Decimal      @db.Decimal(12, 4)
+  unit          String
+  reference     String?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  rawMaterial   RawMaterial? @relation(fields: [rawMaterialId], references: [id], onDelete: SetNull)
+  product       Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([movementDate])
+  @@index([rawMaterialId])
+  @@index([productId])
+}
+
+model ProcurementPlan {
+  id                    String               @id @default(cuid())
+  period                DateTime
+  rawMaterialId         String
+  materialRequirementId String?
+  selectedSupplierId    String?
+  selectedOfferId       String?
+  grossRequirement      Decimal              @db.Decimal(12, 4)
+  currentStock          Decimal              @db.Decimal(12, 4)
+  safetyStock           Decimal              @db.Decimal(12, 4)
+  netRequirement        Decimal              @db.Decimal(12, 4)
+  minimumOrder          Decimal              @db.Decimal(12, 4)
+  finalOrderQuantity    Decimal              @db.Decimal(12, 4)
+  unitPrice             Decimal              @db.Decimal(12, 2)
+  inventoryUnit         String
+  status                String
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  materialRequirement   MaterialRequirement? @relation(fields: [materialRequirementId], references: [id], onDelete: SetNull)
+  rawMaterial           RawMaterial          @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict)
+  supplier              Supplier?            @relation(fields: [selectedSupplierId], references: [id], onDelete: SetNull)
+  selectedOffer         SupplierMaterial?    @relation(fields: [selectedOfferId], references: [id], onDelete: SetNull)
+  purchaseOrder         PurchaseOrder?
+
+  @@index([period])
+  @@index([rawMaterialId])
+  @@index([selectedSupplierId])
+}
+
+model PurchaseOrder {
+  id                  String              @id @default(cuid())
+  number              String              @unique
+  supplierId          String?
+  procurementPlanId   String?             @unique
+  orderDate           DateTime
+  expectedArrivalDate DateTime
+  status              String
+  notes               String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  supplier            Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  procurementPlan     ProcurementPlan?    @relation(fields: [procurementPlanId], references: [id], onDelete: SetNull)
+  items               PurchaseOrderItem[]
+  receivingRecords    ReceivingRecord[]
+
+  @@index([supplierId])
+  @@index([orderDate])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  rawMaterialId   String
+  quantity        Decimal       @db.Decimal(12, 4)
+  unit            String
+  unitPrice       Decimal       @db.Decimal(12, 2)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  rawMaterial     RawMaterial   @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@index([rawMaterialId])
+}
+
+model ReceivingRecord {
+  id                  String        @id @default(cuid())
+  purchaseOrderId     String
+  deliveryOrderNumber String
+  receivedDate        DateTime
+  rawMaterialId       String
+  orderedQuantity     Decimal       @db.Decimal(12, 4)
+  receivedQuantity    Decimal       @db.Decimal(12, 4)
+  rejectedQuantity    Decimal       @db.Decimal(12, 4)
+  unit                String
+  qualityResult       String
+  notes               String?
+  status              String
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  purchaseOrder       PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  rawMaterial         RawMaterial   @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@index([rawMaterialId])
+  @@index([receivedDate])
+}
+
+model ProductionOrder {
+  id                 String    @id @default(cuid())
+  number             String    @unique
+  productId          String
+  forecastId         String?
+  targetQuantity     Int
+  scheduledDate      DateTime
+  status             String
+  actualGoodQuantity Int       @default(0)
+  failedQuantity     Int       @default(0)
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  product            Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  forecast           Forecast? @relation(fields: [forecastId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([forecastId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+model Distribution {
+  id                 String   @id @default(cuid())
+  deliveryNoteNumber String   @unique
+  customerId         String
+  productId          String
+  quantity           Int
+  shipmentDate       DateTime
+  vehicle            String
+  status             String
+  recipientName      String
+  recipientPhone     String
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  customer           Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([customerId])
+  @@index([productId])
+  @@index([shipmentDate])
+  @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

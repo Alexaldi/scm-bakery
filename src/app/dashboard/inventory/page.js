@@ -121,7 +121,7 @@ export default function InventoryPage() {
                     <button type="button" onClick={() => setSelectedKey(row.key)} className="text-left font-medium text-blue-700 hover:text-blue-800">
                       {row.itemName}
                     </button>
-                    <p className="text-xs text-gray-500">{row.itemCode} · {row.itemType === "raw-material" ? "Bahan Baku" : "Produk Jadi"}</p>
+                    <p className="text-xs text-gray-500">{row.itemCode} - {row.itemType === "raw-material" ? "Bahan Baku" : "Produk Jadi"}</p>
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatNumber(row.currentStock, { maximumFractionDigits: 2 })} {row.inventoryUnit}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatNumber(row.safetyStock)} {row.inventoryUnit}</td>
@@ -149,7 +149,7 @@ export default function InventoryPage() {
                     <StatusBadge status={movement.type} />
                   </div>
                   <p className="mt-1 text-sm text-gray-600">
-                    {formatNumber(movement.quantity, { maximumFractionDigits: 2 })} {movement.unit} · {movement.date}
+                    {formatNumber(movement.quantity, { maximumFractionDigits: 2 })} {movement.unit} - {movement.date}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">{movement.notes}</p>
                 </div>

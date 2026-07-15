@@ -1,5 +1,4 @@
 import { Geist, Geist_Mono } from "next/font/google";
-import { ScmProvider } from "@/context/scm-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +23,7 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-gray-100">
-        <ScmProvider>{children}</ScmProvider>
+        {children}
       </body>
     </html>
   );

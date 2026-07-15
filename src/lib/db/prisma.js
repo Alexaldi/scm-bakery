@@ -1,7 +1,7 @@
 import "server-only";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../../../prisma/generated/client/client.ts";
+import { PrismaClient } from "@prisma/client";
 
 function createPrismaClient() {
   if (!process.env.DATABASE_URL) {

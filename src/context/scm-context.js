@@ -1,14 +1,55 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { getDefaultScmData } from "@/lib/mock-data";
+import {
+  adjustInventoryAction,
+  addNotificationAction,
+  completeProductionAction,
+  confirmDistributionShipmentAction,
+  confirmReceivingAction,
+  createProcurementPlansAction,
+  createPurchaseOrderAction,
+  deleteRecordAction,
+  replaceMaterialRequirementsAction,
+  saveBomItemAction,
+  saveCustomerAction,
+  saveDistributionAction,
+  saveForecastAction,
+  saveMonthlySaleAction,
+  saveProductionOrderAction,
+  saveRawMaterialAction,
+  saveSupplierAction,
+  saveSupplierOfferAction,
+  markNotificationsReadAction,
+  updateDistributionStatusAction,
+  updatePurchaseOrderStatusAction,
+  updateProductionStatusAction,
+} from "@/context/scm-actions";
 import { calculateMaterialRequirements } from "@/lib/services/material-requirement";
 import { calculateProcurementPlanRows } from "@/lib/services/procurement";
 import { cloneData, generateId, getNextPeriod } from "@/lib/utils/format";
 
-const STORAGE_KEY = "scm-bakery-demo-data";
-
 const ScmContext = createContext(null);
+
+const emptyScmData = {
+  products: [],
+  rawMaterials: [],
+  bom: [],
+  suppliers: [],
+  supplierOffers: [],
+  customers: [],
+  monthlySales: [],
+  forecasts: [],
+  materialRequirements: [],
+  inventories: [],
+  inventoryMovements: [],
+  procurementPlans: [],
+  purchaseOrders: [],
+  receivingRecords: [],
+  productionOrders: [],
+  distributions: [],
+  notifications: [],
+};
 
 function buildMovement({ itemType, itemId, type, quantity, unit, reference, notes }) {
   return {
@@ -79,36 +120,21 @@ function syncMasterStock(state, itemType, itemId, quantityDelta) {
   };
 }
 
-export function ScmProvider({ children }) {
-  const [state, setState] = useState(() => getDefaultScmData());
-  const [hydrated, setHydrated] = useState(false);
-  const [role, setRole] = useState("Administrator");
+function upsertCollection(collection, record) {
+  const exists = collection.some((item) => item.id === record.id);
+  return exists ? collection.map((item) => (item.id === record.id ? record : item)) : [record, ...collection];
+}
+
+export function ScmProvider({ children, initialData = emptyScmData, session = null }) {
+  const [state, setState] = useState(() => initialData);
+  const hydrated = true;
+  const role = session?.role || "Administrator";
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      try {
-        const saved = window.localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          setState(JSON.parse(saved));
-        }
-      } catch {
-        setState(getDefaultScmData());
-      } finally {
-        setHydrated(true);
-      }
-    }, 0);
-
+    const timeout = window.setTimeout(() => setState(initialData), 0);
     return () => window.clearTimeout(timeout);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [hydrated, state]);
+  }, [initialData]);
 
   function pushToast(message, type = "success") {
     setToast({
@@ -118,55 +144,63 @@ export function ScmProvider({ children }) {
     });
   }
 
-  function addNotification(title, message) {
+  function setRole() {
+    pushToast("Role mengikuti akun login. Silakan logout untuk mengganti role.", "info");
+  }
+
+  async function addNotification(title, message) {
+    const result = await addNotificationAction(title, message);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
     setState((current) => ({
       ...current,
-      notifications: [
-        {
-          id: generateId("notif"),
-          title,
-          message,
-          createdAt: new Date().toISOString(),
-          read: false,
-        },
-        ...current.notifications,
-      ],
+      notifications: [result.record, ...current.notifications],
     }));
   }
 
-  function resetDemoData() {
-    const freshData = getDefaultScmData();
-    setState(freshData);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(freshData));
-    pushToast("Data demo berhasil dikembalikan ke kondisi awal.");
+  async function saveRecord(collectionName, record) {
+    const action =
+      collectionName === "customers"
+        ? saveCustomerAction
+        : collectionName === "suppliers"
+          ? saveSupplierAction
+          : collectionName === "supplierOffers"
+            ? saveSupplierOfferAction
+            : null;
+
+    if (!action) {
+      pushToast("Penyimpanan database belum tersedia untuk data ini.", "error");
+      return;
+    }
+
+    const result = await action(record);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      [collectionName]: upsertCollection(current[collectionName] || [], result.record),
+    }));
+    pushToast(result.message);
   }
 
-  function saveRecord(collectionName, record) {
-    setState((current) => {
-      const collection = current[collectionName] || [];
-      const exists = Boolean(record.id && collection.some((item) => item.id === record.id));
-      const nextRecord = {
-        ...record,
-        id: record.id || generateId(collectionName),
-      };
+  async function deleteRecord(collectionName, id) {
+    const result = await deleteRecordAction(collectionName, id);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
 
-      return {
-        ...current,
-        [collectionName]: exists
-          ? collection.map((item) => (item.id === nextRecord.id ? nextRecord : item))
-          : [nextRecord, ...collection],
-      };
-    });
-
-    pushToast("Data berhasil disimpan.");
-  }
-
-  function deleteRecord(collectionName, id) {
     setState((current) => ({
       ...current,
       [collectionName]: current[collectionName].filter((item) => item.id !== id),
     }));
-    pushToast("Data berhasil dihapus.");
+    pushToast(result.message);
   }
 
   function saveProduct(product) {
@@ -220,88 +254,67 @@ export function ScmProvider({ children }) {
     pushToast("Data produk berhasil disimpan.");
   }
 
-  function saveRawMaterial(material) {
-    setState((current) => {
-      const id = material.id || generateId("raw");
-      const nextMaterial = {
-        ...material,
-        id,
-        currentStock: Number(material.currentStock || 0),
-        safetyStock: Number(material.safetyStock || 0),
-        minimumStock: Number(material.minimumStock || 0),
-      };
-      const exists = current.rawMaterials.some((item) => item.id === id);
-      const rawMaterials = exists
-        ? current.rawMaterials.map((item) => (item.id === id ? nextMaterial : item))
-        : [nextMaterial, ...current.rawMaterials];
-      const inventoryExists = current.inventories.some(
-        (inventory) => inventory.itemType === "raw-material" && inventory.rawMaterialId === id
-      );
-      const inventories = inventoryExists
-        ? current.inventories.map((inventory) =>
-            inventory.itemType === "raw-material" && inventory.rawMaterialId === id
-              ? {
-                  ...inventory,
-                  currentStock: nextMaterial.currentStock,
-                  safetyStock: nextMaterial.safetyStock,
-                  minimumStock: nextMaterial.minimumStock,
-                  inventoryUnit: nextMaterial.inventoryUnit,
-                  warehouseLocation: nextMaterial.warehouseLocation,
-                }
-              : inventory
-          )
-        : [
-            {
-              id: `inv-${id}`,
-              itemType: "raw-material",
-              rawMaterialId: id,
-              productId: "",
-              currentStock: nextMaterial.currentStock,
-              safetyStock: nextMaterial.safetyStock,
-              minimumStock: nextMaterial.minimumStock,
-              inventoryUnit: nextMaterial.inventoryUnit,
-              warehouseLocation: nextMaterial.warehouseLocation,
-            },
-            ...current.inventories,
-          ];
+  async function saveRawMaterial(material) {
+    const result = await saveRawMaterialAction(material);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
 
-      return {
-        ...current,
-        rawMaterials,
-        inventories,
-      };
-    });
-    pushToast("Data bahan baku berhasil disimpan.");
+    const nextMaterial = result.record;
+    setState((current) => ({
+      ...current,
+      rawMaterials: upsertCollection(current.rawMaterials, nextMaterial),
+      inventories: upsertCollection(current.inventories, {
+        id: `inv-${nextMaterial.id}`,
+        itemType: "raw-material",
+        rawMaterialId: nextMaterial.id,
+        productId: "",
+        currentStock: nextMaterial.currentStock,
+        safetyStock: nextMaterial.safetyStock,
+        minimumStock: nextMaterial.minimumStock,
+        inventoryUnit: nextMaterial.inventoryUnit,
+        warehouseLocation: nextMaterial.warehouseLocation,
+      }),
+    }));
+    pushToast(result.message);
   }
 
-  function saveBomItem(item) {
-    const nextItem = {
-      ...item,
-      id: item.id || generateId("bom"),
-      quantityPerProduct: Number(item.quantityPerProduct || 0),
-      conversionFactor: Number(item.conversionFactor || 1),
-    };
-    saveRecord("bom", nextItem);
+  async function saveBomItem(item) {
+    const result = await saveBomItemAction(item);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      bom: upsertCollection(current.bom, result.record),
+    }));
+    pushToast(result.message);
   }
 
-  function saveMonthlySale(sale) {
-    const nextSale = {
-      ...sale,
-      id: sale.id || generateId("sale"),
-      quantity: Number(sale.quantity || 0),
-    };
-    saveRecord("monthlySales", nextSale);
+  async function saveMonthlySale(sale) {
+    const result = await saveMonthlySaleAction(sale);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      monthlySales: upsertCollection(current.monthlySales, result.record),
+    }));
+    pushToast(result.message);
   }
 
-  function saveForecast(forecast) {
+  async function saveForecast(forecast) {
     const productSales = state.monthlySales
       .filter((sale) => sale.productId === forecast.productId)
       .sort((a, b) => a.period.localeCompare(b.period));
     const lastPeriod = productSales.at(-1)?.period || "2026-06";
-
-    saveRecord("forecasts", {
+    const result = await saveForecastAction({
       ...forecast,
-      id: forecast.id || generateId("forecast"),
       period: forecast.period || getNextPeriod(lastPeriod),
       historicalPeriods: Number(forecast.historicalPeriods || productSales.length),
       quantity: Number(forecast.quantity ?? forecast.predictedQuantity ?? 0),
@@ -310,6 +323,38 @@ export function ScmProvider({ children }) {
       createdAt: forecast.createdAt || new Date().toISOString().slice(0, 10),
       status: forecast.status || "Disetujui",
     });
+
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return null;
+    }
+
+    const nextForecasts = upsertCollection(state.forecasts, result.record);
+    const requirementResult = calculateMaterialRequirements({
+      forecasts: nextForecasts,
+      bom: state.bom,
+      products: state.products,
+      rawMaterials: state.rawMaterials,
+    });
+    const materialRequirements = requirementResult.aggregated.map((item) => ({
+      ...item,
+      id: `mr-${item.rawMaterialId}-${result.record.period}`,
+      period: result.record.period,
+      status: "Dihitung",
+    }));
+
+    setState((current) => ({
+      ...current,
+      forecasts: nextForecasts,
+      materialRequirements,
+    }));
+    replaceMaterialRequirementsAction(materialRequirements).then((saveResult) => {
+      if (!saveResult.ok) {
+        pushToast(saveResult.message, "error");
+      }
+    });
+    pushToast("Peramalan disimpan dan kebutuhan bahan diperbarui otomatis.");
+    return result.record;
   }
 
   function calculateAndSaveMaterialRequirements() {
@@ -332,7 +377,12 @@ export function ScmProvider({ children }) {
       ...current,
       materialRequirements,
     }));
-    pushToast("Kebutuhan bahan berhasil dihitung dari forecast dan BOM.");
+    replaceMaterialRequirementsAction(materialRequirements).then((saveResult) => {
+      if (!saveResult.ok) {
+        pushToast(saveResult.message, "error");
+      }
+    });
+    pushToast("Kebutuhan bahan berhasil dihitung dari peramalan dan BOM.");
 
     return {
       ...result,
@@ -340,7 +390,7 @@ export function ScmProvider({ children }) {
     };
   }
 
-  function createProcurementPlans(rows) {
+  async function createProcurementPlans(rows) {
     const sourceRows =
       rows ||
       calculateProcurementPlanRows({
@@ -351,93 +401,55 @@ export function ScmProvider({ children }) {
         supplierOffers: state.supplierOffers,
       });
     const period = state.materialRequirements[0]?.period || "2026-07";
-    const plans = sourceRows
-      .filter((row) => Number(row.finalOrderQuantity || 0) > 0)
-      .map((row) => ({
-        id: generateId("plan"),
-        period,
-        rawMaterialId: row.rawMaterialId,
-        rawMaterialName: row.rawMaterialName,
-        grossRequirement: row.grossRequirement,
-        currentStock: row.currentStock,
-        safetyStock: row.safetyStock,
-        netRequirement: row.netRequirement,
-        selectedSupplierId: row.selectedSupplierId,
-        selectedOfferId: row.selectedOfferId,
-        selectedSupplierName: row.selectedSupplierName,
-        minimumOrder: row.minimumOrder,
-        finalOrderQuantity: row.finalOrderQuantity,
-        unitPrice: row.unitPrice,
-        inventoryUnit: row.inventoryUnit,
-        status: "Direncanakan",
-      }));
+    const result = await createProcurementPlansAction(sourceRows.map((row) => ({ ...row, period })), period);
+
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return [];
+    }
 
     setState((current) => ({
       ...current,
-      procurementPlans: [...plans, ...current.procurementPlans],
+      procurementPlans: [...result.records, ...current.procurementPlans],
     }));
-    pushToast(`${plans.length} rencana pengadaan berhasil dibuat.`);
-    addNotification("Rencana Pengadaan Dibuat", `${plans.length} bahan baku siap dikonversi menjadi PO.`);
-    return plans;
+    pushToast(result.message);
+    addNotification("Rencana Pengadaan Dibuat", `${result.records.length} bahan baku siap dikonversi menjadi PO.`);
+    return result.records;
   }
 
-  function createPurchaseOrderFromPlan(planId) {
-    let createdPo = null;
+  async function createPurchaseOrderFromPlan(planId) {
+    const result = await createPurchaseOrderAction(planId);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return null;
+    }
 
-    setState((current) => {
-      const plan = current.procurementPlans.find((item) => item.id === planId);
-      if (!plan) {
-        return current;
-      }
-
-      const poIndex = current.purchaseOrders.length + 1;
-      const orderDate = new Date();
-      const expectedArrival = new Date(orderDate);
-      expectedArrival.setDate(orderDate.getDate() + 3);
-      const items = [
-        {
-          id: generateId("poitem"),
-          rawMaterialId: plan.rawMaterialId,
-          rawMaterialName: plan.rawMaterialName,
-          quantity: Number(plan.finalOrderQuantity || 0),
-          unit: plan.inventoryUnit,
-          unitPrice: Number(plan.unitPrice || 0),
-        },
-      ];
-      createdPo = {
-        id: generateId("po"),
-        number: `PO-2026-${String(poIndex).padStart(4, "0")}`,
-        supplierId: plan.selectedSupplierId,
-        supplierName: plan.selectedSupplierName,
-        orderDate: orderDate.toISOString().slice(0, 10),
-        expectedArrivalDate: expectedArrival.toISOString().slice(0, 10),
-        status: "Draft",
-        items,
-        notes: "PO simulasi dari rencana pengadaan.",
-      };
-
-      return {
-        ...current,
-        procurementPlans: current.procurementPlans.map((item) =>
-          item.id === planId ? { ...item, status: "PO Dibuat", purchaseOrderId: createdPo.id } : item
-        ),
-        purchaseOrders: [createdPo, ...current.purchaseOrders],
-      };
-    });
-
-    pushToast("Purchase Order berhasil dibuat.");
-    return createdPo;
+    setState((current) => ({
+      ...current,
+      procurementPlans: current.procurementPlans.map((item) =>
+        item.id === planId ? { ...item, status: "PO Dibuat", purchaseOrderId: result.record.id } : item
+      ),
+      purchaseOrders: [result.record, ...current.purchaseOrders],
+    }));
+    pushToast(result.message);
+    return result.record;
   }
 
-  function updatePurchaseOrderStatus(poId, status) {
+  async function updatePurchaseOrderStatus(poId, status) {
+    const result = await updatePurchaseOrderStatusAction(poId, status);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
     setState((current) => ({
       ...current,
       purchaseOrders: current.purchaseOrders.map((po) => (po.id === poId ? { ...po, status } : po)),
     }));
-    pushToast(`Status PO diubah menjadi ${status}.`);
+    pushToast(result.message);
   }
 
-  function adjustInventory({ itemType, itemId, quantity, movementType, unit, reference, notes }) {
+  async function adjustInventory({ itemType, itemId, quantity, movementType, unit, reference, notes }) {
     if (!isPositiveQuantity(quantity)) {
       pushToast("Jumlah penyesuaian stok harus lebih besar dari nol.", "error");
       return;
@@ -453,6 +465,12 @@ export function ScmProvider({ children }) {
 
     if (Number(inventory.currentStock || 0) + signedQuantity < 0) {
       pushToast("Stok tidak mencukupi untuk transaksi keluar.", "error");
+      return;
+    }
+
+    const result = await adjustInventoryAction({ itemType, itemId, quantity, movementType, unit: unit || inventory.inventoryUnit, reference, notes });
+    if (!result.ok) {
+      pushToast(result.message, "error");
       return;
     }
 
@@ -482,10 +500,10 @@ export function ScmProvider({ children }) {
       return nextState;
     });
 
-    pushToast("Penyesuaian stok berhasil disimpan.");
+    pushToast(result.message);
   }
 
-  function confirmReceiving(payload) {
+  async function confirmReceiving(payload) {
     const receivedQuantity = Number(payload.receivedQuantity || 0);
     const rejectedQuantity = Number(payload.rejectedQuantity || 0);
     const po = state.purchaseOrders.find((item) => item.id === payload.purchaseOrderId);
@@ -518,29 +536,20 @@ export function ScmProvider({ children }) {
       return;
     }
 
+    const result = await confirmReceivingAction({ ...payload, rawMaterialId, orderedQuantity });
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
     setState((current) => {
-      const rawMaterial = current.rawMaterials.find((item) => item.id === rawMaterialId);
       const currentPriorReceived = current.receivingRecords
         .filter((record) => record.purchaseOrderId === payload.purchaseOrderId && record.rawMaterialId === rawMaterialId)
         .reduce((total, record) => total + Number(record.receivedQuantity || 0), 0);
       const totalReceived = currentPriorReceived + receivedQuantity;
       const poStatus =
         totalReceived >= orderedQuantity && orderedQuantity > 0 ? "Selesai" : "Diterima Sebagian";
-      const record = {
-        id: generateId("recv"),
-        purchaseOrderId: payload.purchaseOrderId,
-        poNumber: po?.number || payload.poNumber,
-        deliveryOrderNumber: payload.deliveryOrderNumber,
-        receivedDate: payload.receivedDate || new Date().toISOString().slice(0, 10),
-        rawMaterialId,
-        orderedQuantity,
-        receivedQuantity,
-        rejectedQuantity,
-        unit: payload.unit || poItem.unit || rawMaterial?.inventoryUnit,
-        qualityResult: payload.qualityResult,
-        notes: payload.notes,
-        status: "Dikonfirmasi",
-      };
+      const record = result.record;
       const baseState = {
         ...current,
         purchaseOrders: current.purchaseOrders.map((item) =>
@@ -565,7 +574,7 @@ export function ScmProvider({ children }) {
       return syncMasterStock(baseState, "raw-material", rawMaterialId, receivedQuantity);
     });
 
-    pushToast("Penerimaan bahan dikonfirmasi dan stok otomatis bertambah.");
+    pushToast(result.message);
   }
 
   function validateProductionMaterials(productId, targetQuantity) {
@@ -589,29 +598,40 @@ export function ScmProvider({ children }) {
     });
   }
 
-  function saveProductionOrder(order) {
+  async function saveProductionOrder(order) {
     if (!order.productId || !isPositiveQuantity(order.targetQuantity)) {
       pushToast("Order produksi harus memiliki produk dan target quantity lebih besar dari nol.", "error");
       return;
     }
 
-    saveRecord("productionOrders", {
-      ...order,
-      id: order.id || generateId("prod-order"),
-      number: order.number || `PROD-2026-${String(state.productionOrders.length + 1).padStart(3, "0")}`,
-      targetQuantity: Number(order.targetQuantity || 0),
-      actualGoodQuantity: Number(order.actualGoodQuantity || 0),
-      failedQuantity: Number(order.failedQuantity || 0),
-      status: order.status || "Direncanakan",
-    });
+    const result = await saveProductionOrderAction(order);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      productionOrders: upsertCollection(current.productionOrders, result.record),
+    }));
+    pushToast(result.message);
   }
 
-  function updateProductionStatus(orderId, status) {
+  async function updateProductionStatus(orderId, status) {
     const order = state.productionOrders.find((item) => item.id === orderId);
     const validation = validateProductionMaterials(order?.productId, order?.targetQuantity);
 
     if ((status === "Bahan Disiapkan" || status === "Diproses") && validation.some((item) => !item.sufficient)) {
       pushToast("Produksi diblokir karena bahan baku belum mencukupi.", "error");
+      return {
+        blocked: true,
+        validation,
+      };
+    }
+
+    const result = await updateProductionStatusAction(orderId, status);
+    if (!result.ok) {
+      pushToast(result.message, "error");
       return {
         blocked: true,
         validation,
@@ -624,14 +644,14 @@ export function ScmProvider({ children }) {
         item.id === orderId ? { ...item, status } : item
       ),
     }));
-    pushToast(`Status produksi diubah menjadi ${status}.`);
+    pushToast(result.message);
     return {
       blocked: false,
       validation,
     };
   }
 
-  function completeProduction(orderId, actualGoodQuantity, failedQuantity) {
+  async function completeProduction(orderId, actualGoodQuantity, failedQuantity) {
     const goodQty = Number(actualGoodQuantity || 0);
     const failedQty = Number(failedQuantity || 0);
     const order = state.productionOrders.find((item) => item.id === orderId);
@@ -654,6 +674,12 @@ export function ScmProvider({ children }) {
 
     if (goodQty + failedQty > targetQuantity) {
       pushToast("Total qty berhasil dan gagal tidak boleh melebihi target produksi.", "error");
+      return;
+    }
+
+    const result = await completeProductionAction(orderId, goodQty, failedQty);
+    if (!result.ok) {
+      pushToast(result.message, "error");
       return;
     }
 
@@ -753,27 +779,29 @@ export function ScmProvider({ children }) {
       return nextState;
     });
 
-    pushToast("Produksi selesai. Bahan baku berkurang dan stok produk jadi bertambah.");
+    pushToast(result.message);
   }
 
-  function saveDistribution(distribution) {
+  async function saveDistribution(distribution) {
     if (!distribution.customerId || !distribution.productId || !isPositiveQuantity(distribution.quantity)) {
       pushToast("Distribusi harus memiliki pelanggan, produk, dan quantity lebih besar dari nol.", "error");
       return;
     }
 
-    saveRecord("distributions", {
-      ...distribution,
-      id: distribution.id || generateId("dist"),
-      deliveryNoteNumber:
-        distribution.deliveryNoteNumber ||
-        `SJ-2026-${String(state.distributions.length + 1).padStart(4, "0")}`,
-      quantity: Number(distribution.quantity || 0),
-      status: distribution.status || "Dijadwalkan",
-    });
+    const result = await saveDistributionAction(distribution);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      distributions: upsertCollection(current.distributions, result.record),
+    }));
+    pushToast(result.message);
   }
 
-  function updateDistributionStatus(distributionId, status) {
+  async function updateDistributionStatus(distributionId, status) {
     const distribution = state.distributions.find((item) => item.id === distributionId);
 
     if (!distribution) {
@@ -791,16 +819,22 @@ export function ScmProvider({ children }) {
       return;
     }
 
+    const result = await updateDistributionStatusAction(distributionId, status);
+    if (!result.ok) {
+      pushToast(result.message, "error");
+      return;
+    }
+
     setState((current) => ({
       ...current,
       distributions: current.distributions.map((distribution) =>
         distribution.id === distributionId ? { ...distribution, status } : distribution
       ),
     }));
-    pushToast(`Status distribusi diubah menjadi ${status}.`);
+    pushToast(result.message);
   }
 
-  function confirmDistributionShipment(distributionId) {
+  async function confirmDistributionShipment(distributionId) {
     const distribution = state.distributions.find((item) => item.id === distributionId);
 
     if (!distribution) {
@@ -824,6 +858,12 @@ export function ScmProvider({ children }) {
 
     if (availableStock < quantity) {
       pushToast("Distribusi diblokir karena stok produk jadi tidak mencukupi.", "error");
+      return;
+    }
+
+    const result = await confirmDistributionShipmentAction(distributionId);
+    if (!result.ok) {
+      pushToast(result.message, "error");
       return;
     }
 
@@ -851,10 +891,11 @@ export function ScmProvider({ children }) {
       return syncMasterStock(baseState, "finished-product", distribution.productId, -quantity);
     });
 
-    pushToast("Pengiriman dikonfirmasi dan stok produk jadi berkurang.");
+    pushToast(result.message);
   }
 
   function markNotificationsRead() {
+    markNotificationsReadAction();
     setState((current) => ({
       ...current,
       notifications: current.notifications.map((notification) => ({ ...notification, read: true })),
@@ -876,6 +917,7 @@ export function ScmProvider({ children }) {
   const value = {
     ...state,
     hydrated,
+    session,
     role,
     setRole,
     toast,
@@ -884,7 +926,6 @@ export function ScmProvider({ children }) {
     poTotals: Object.fromEntries(state.purchaseOrders.map((po) => [po.id, calculatePoTotal(po.items)])),
     pushToast,
     addNotification,
-    resetDemoData,
     saveRecord,
     deleteRecord,
     saveProduct,

@@ -88,7 +88,7 @@ export default function ReportsPage() {
       ["Produk Aktif", scm.products.length],
     ],
     Peramalan: [
-      ["Total Forecast", forecastRows.length],
+      ["Total Peramalan", forecastRows.length],
       ["Disetujui", forecastRows.filter((row) => row.status === "Disetujui").length],
       ["Metode", "Regresi Linier"],
     ],

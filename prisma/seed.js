@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "./generated/client/client.ts";
+import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../src/lib/auth/password.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL belum tersedia. Tambahkan DATABASE_URL di .env sebelum menjalankan seed.");
@@ -11,6 +12,16 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 const ACTIVE = "ACTIVE";
+const DEFAULT_PASSWORD = "bakery12345";
+
+const users = [
+  ["admin@scm-bakery.local", "Administrator SCM", "Administrator"],
+  ["ppic@scm-bakery.local", "Staff PPIC", "PPIC"],
+  ["purchasing@scm-bakery.local", "Staff Purchasing", "Purchasing"],
+  ["gudang@scm-bakery.local", "Staff Gudang", "Gudang"],
+  ["produksi@scm-bakery.local", "Staff Produksi", "Produksi"],
+  ["distribusi@scm-bakery.local", "Staff Distribusi", "Distribusi"],
+];
 
 const products = [
   ["PRD-001", "Butter Croissant", "Pastry", 18500, "pcs", 2, 280],
@@ -180,6 +191,18 @@ function byCode(records) {
   return Object.fromEntries(records.map((record) => [record.code, record.id]));
 }
 
+async function seedUsers() {
+  const passwordHash = await hashPassword(DEFAULT_PASSWORD);
+
+  for (const [email, name, role] of users) {
+    await prisma.user.upsert({
+      where: { email },
+      update: { name, role, status: ACTIVE },
+      create: { email, name, role, passwordHash, status: ACTIVE },
+    });
+  }
+}
+
 async function seedProducts() {
   const records = [];
 
@@ -322,6 +345,7 @@ async function seedInventories(productIds, rawMaterialIds) {
 
 async function countRecords() {
   return {
+    User: await prisma.user.count(),
     Product: await prisma.product.count(),
     RawMaterial: await prisma.rawMaterial.count(),
     BillOfMaterial: await prisma.billOfMaterial.count(),
@@ -336,6 +360,7 @@ async function countRecords() {
 
 async function main() {
   // ponytail: range/non-negative checks stay as seed data discipline until CRUD writes move server-side.
+  await seedUsers();
   const productIds = await seedProducts();
   const rawMaterialIds = await seedRawMaterials();
   await seedBom(productIds, rawMaterialIds);

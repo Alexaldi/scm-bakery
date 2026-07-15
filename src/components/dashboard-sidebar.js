@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useScm } from "@/context/scm-context";
 import { canAccessMenu, sidebarMenus } from "@/lib/utils/navigation";
@@ -17,7 +17,7 @@ function isActivePath(pathname, href) {
 
 export default function DashboardSidebar({ onNavigate }) {
   const pathname = usePathname();
-  const { role, resetDemoData } = useScm();
+  const { role } = useScm();
   const [masterOpen, setMasterOpen] = useState(pathname.startsWith("/dashboard/master"));
 
   return (
@@ -104,17 +104,6 @@ export default function DashboardSidebar({ onNavigate }) {
             );
           })}
       </nav>
-
-      <div className="border-t border-gray-200 p-3">
-        <button
-          type="button"
-          onClick={resetDemoData}
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          Reset Data Demo
-        </button>
-      </div>
     </aside>
   );
 }
