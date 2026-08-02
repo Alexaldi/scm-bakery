@@ -11,7 +11,9 @@ function number(value) {
 }
 
 function monthDate(value) {
-  return new Date(`${value || "2026-07"}-01T00:00:00.000Z`);
+  const fallback = new Date();
+  const period = value || `${fallback.getFullYear()}-${String(fallback.getMonth() + 1).padStart(2, "0")}`;
+  return new Date(`${period}-01T00:00:00.000Z`);
 }
 
 function dateOnly(value) {

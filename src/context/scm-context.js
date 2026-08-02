@@ -27,7 +27,7 @@ import {
 } from "@/context/scm-actions";
 import { calculateMaterialRequirements } from "@/lib/services/material-requirement";
 import { calculateProcurementPlanRows } from "@/lib/services/procurement";
-import { cloneData, generateId, getNextPeriod } from "@/lib/utils/format";
+import { cloneData, generateId, getCurrentPeriod, getNextPeriod } from "@/lib/utils/format";
 
 const ScmContext = createContext(null);
 
@@ -312,7 +312,7 @@ export function ScmProvider({ children, initialData = emptyScmData, session = nu
     const productSales = state.monthlySales
       .filter((sale) => sale.productId === forecast.productId)
       .sort((a, b) => a.period.localeCompare(b.period));
-    const lastPeriod = productSales.at(-1)?.period || "2026-06";
+    const lastPeriod = productSales.at(-1)?.period || getCurrentPeriod();
     const result = await saveForecastAction({
       ...forecast,
       period: forecast.period || getNextPeriod(lastPeriod),
@@ -365,7 +365,7 @@ export function ScmProvider({ children, initialData = emptyScmData, session = nu
       rawMaterials: state.rawMaterials,
     });
 
-    const period = state.forecasts.find((forecast) => forecast.status === "Disetujui")?.period || "2026-07";
+    const period = state.forecasts.find((forecast) => forecast.status === "Disetujui")?.period || getNextPeriod(getCurrentPeriod());
     const materialRequirements = result.aggregated.map((item) => ({
       ...item,
       id: `mr-${item.rawMaterialId}-${period}`,
@@ -400,7 +400,7 @@ export function ScmProvider({ children, initialData = emptyScmData, session = nu
         suppliers: state.suppliers,
         supplierOffers: state.supplierOffers,
       });
-    const period = state.materialRequirements[0]?.period || "2026-07";
+    const period = state.materialRequirements[0]?.period || getNextPeriod(getCurrentPeriod());
     const result = await createProcurementPlansAction(sourceRows.map((row) => ({ ...row, period })), period);
 
     if (!result.ok) {

@@ -7,8 +7,8 @@ import DataTableWrapper from "@/components/data-table-wrapper";
 import PageHeader from "@/components/page-header";
 import StatusBadge from "@/components/status-badge";
 import { useScm } from "@/context/scm-context";
-import { calculateLinearRegression } from "@/lib/services/linear-regression";
-import { formatNumber, formatPeriod, getNextPeriod } from "@/lib/utils/format";
+import { calculateBestLinearRegression } from "@/lib/services/linear-regression";
+import { formatNumber, formatPeriod, getCurrentPeriod, getNextPeriod } from "@/lib/utils/format";
 
 const inputClass =
   "h-10 rounded-md border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
@@ -16,23 +16,23 @@ const inputClass =
 export default function ForecastsPage() {
   const { products, monthlySales, forecasts, saveForecast, pushToast } = useScm();
   const [productId, setProductId] = useState(products[0]?.id || "");
-  const [periodCount, setPeriodCount] = useState(12);
 
   const product = products.find((item) => item.id === productId);
   const productSales = useMemo(
     () =>
       monthlySales
         .filter((sale) => sale.productId === productId)
-        .sort((a, b) => a.period.localeCompare(b.period))
-        .slice(-Number(periodCount || 12)),
-    [monthlySales, periodCount, productId]
+        .sort((a, b) => a.period.localeCompare(b.period)),
+    [monthlySales, productId]
   );
   const result = useMemo(
-    () => calculateLinearRegression(productSales.map((sale) => sale.quantity)),
+    () => calculateBestLinearRegression(productSales.map((sale) => sale.quantity)),
     [productSales]
   );
-  const nextPeriod = getNextPeriod(productSales.at(-1)?.period || "2026-06");
-  const chartData = productSales.map((sale, index) => ({
+  const latestPeriod = productSales.at(-1)?.period || getCurrentPeriod();
+  const nextPeriod = getNextPeriod(latestPeriod);
+  const selectedSales = result?.selectedRange ? productSales.slice(-result.selectedRange) : productSales;
+  const chartData = selectedSales.map((sale, index) => ({
     label: formatPeriod(sale.period).slice(0, 3),
     actual: Number(sale.quantity || 0),
     regression:
@@ -53,7 +53,7 @@ export default function ForecastsPage() {
     saveForecast({
       productId,
       period: nextPeriod,
-      historicalPeriods: productSales.length,
+      historicalPeriods: result.selectedRange || productSales.length,
       quantity: result.predictedY,
       predictedQuantity: result.predictedY,
       calculation: result,
@@ -79,20 +79,12 @@ export default function ForecastsPage() {
         }
       />
 
-      <div className="mb-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
+      <div className="mb-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
         <label className="text-sm font-medium text-gray-700">
           Produk
           <select value={productId} onChange={(event) => setProductId(event.target.value)} className={`${inputClass} w-full`}>
             {products.map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm font-medium text-gray-700">
-          Data Historis
-          <select value={periodCount} onChange={(event) => setPeriodCount(event.target.value)} className={`${inputClass} w-full`}>
-            {[3, 6, 9, 12].map((count) => (
-              <option key={count} value={count}>{count} bulan</option>
             ))}
           </select>
         </label>
@@ -106,7 +98,7 @@ export default function ForecastsPage() {
         <div className="mb-4 flex flex-col justify-between gap-2 md:flex-row md:items-center">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Grafik Penjualan dan Tren Peramalan</h2>
-            <p className="text-sm text-gray-500">{product?.name} berdasarkan {productSales.length} periode penjualan terakhir</p>
+            <p className="text-sm text-gray-500">{product?.name} berdasarkan range terbaik sistem</p>
           </div>
           {result?.isValid ? <StatusBadge status={`Prediksi ${formatNumber(result.predictedY)} pcs`} /> : null}
         </div>
@@ -134,7 +126,7 @@ export default function ForecastsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {productSales.map((sale) => (
+              {selectedSales.map((sale) => (
                 <tr key={sale.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-600">{formatPeriod(sale.period)}</td>
                   <td className="px-4 py-3 text-right text-gray-900">{formatNumber(sale.quantity)} pcs</td>
@@ -158,7 +150,13 @@ export default function ForecastsPage() {
               </div>
               <div>
                 <dt className="text-gray-500">Data Historis</dt>
-                <dd className="font-semibold text-gray-900">{productSales.length} bulan terakhir</dd>
+                <dd className="font-semibold text-gray-900">{result.selectedRange} bulan terbaik</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Error Uji Prediksi</dt>
+                <dd className="font-semibold text-gray-900">
+                  {result.backtestError === null ? "-" : `${formatNumber(result.backtestError)} pcs`}
+                </dd>
               </div>
               <div className="rounded-md bg-green-50 p-3">
                 <dt className="text-green-700">Rekomendasi Jumlah Produksi</dt>
